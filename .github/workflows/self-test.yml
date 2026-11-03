@@ -53,8 +53,12 @@ jobs:
 
   release:
     name: Release (dry run)
+    # GitHub checks a called workflow's permissions before it runs, so this grants what the release
+    # job declares. With dry-run that job is skipped: only the read-only build job runs.
     permissions:
-      contents: read  # check out the repository; a dry run never attests or releases
+      contents: write  # declared by the skipped release job
+      id-token: write  # declared by the skipped release job
+      attestations: write  # declared by the skipped release job
     uses: $/.github/workflows/release.yml
     with:
       working-directory: tests/fixture
