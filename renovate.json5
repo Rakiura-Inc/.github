@@ -1,0 +1,7 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    // This repository's own preset (renovate-config.json5), as every Rakiura-Inc repository uses it.
+    "local>Rakiura-Inc/.github:renovate-config.json5",
+  ],
+}

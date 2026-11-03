@@ -1,0 +1,64 @@
+# Reusable: OpenSSF Scorecard supply-chain checks, uploaded as SARIF to the repository's code
+# scanning alerts (Security tab). Scorecard only looks at the default branch.
+#
+#   on:
+#     branch_protection_rule:
+#     schedule:
+#       - cron: "15 14 * * 0"
+#     push:
+#       branches:
+#         - main
+#   jobs:
+#     scorecard:
+#       name: Scorecard
+#       permissions:
+#         contents: read  # check out the repository
+#         security-events: write  # upload the SARIF to code scanning
+#       uses: Rakiura-Inc/.github/.github/workflows/scorecard.yml@<sha>  # vX.Y.Z
+#
+# The results are not published to api.scorecard.dev (the public badge): the Scorecard API only
+# accepts results from a workflow that runs scorecard-action itself, not through a reusable one.
+
+name: "Scorecard"
+
+on:
+  workflow_call:
+
+permissions: {}
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    if: github.event.repository.default_branch == github.ref_name
+    permissions:
+      contents: read  # check out the repository
+      security-events: write  # upload the SARIF to code scanning
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run analysis
+        uses: ossf/scorecard-action@fa7117db83c52d787ae5a89f350999701505d78e  # v2.5.0
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: false
+
+      - name: Upload the SARIF as an artifact
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: scorecard-sarif
+          path: results.sarif
+          retention-days: 5
+
+      - name: Upload to code scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@1fc58d04a4d4374f921bdac573c3811c240f9c26  # v4.39.2
+        with:
+          sarif_file: results.sarif

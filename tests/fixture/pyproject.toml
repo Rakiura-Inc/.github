@@ -1,0 +1,41 @@
+[build-system]
+build-backend = "hatchling.build"
+requires = [ "hatchling" ]
+
+[project]
+name = "fixture-pkg"
+version = "0.0.1"
+description = "A tiny project the shared workflows run against in this repository's self test."
+readme = "README.md"
+license = "MIT"
+authors = [ { name = "Rakiura Inc." } ]
+requires-python = ">=3.11"
+classifiers = [
+    "Private :: Do Not Upload",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
+]
+dependencies = []
+
+[dependency-groups]
+dev = [
+    { include-group = "pytest" },
+    { include-group = "run" },
+]
+pytest = [
+    "pytest==9.2.0",
+    "pytest-randomly==5.0.0",
+    "pytest-xdist==3.8.0",
+]
+run = [
+    "ipykernel==7.4.0",
+    "nbclient==0.11.0",
+    "nbformat==5.11.1",
+]
+
+[tool.uv]
+required-version = ">=0.8.4"

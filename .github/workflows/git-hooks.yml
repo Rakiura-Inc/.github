@@ -1,0 +1,49 @@
+# Reusable: run every git hook (.pre-commit-config.yaml) on every file with prek.
+#
+#   jobs:
+#     git-hooks:
+#       name: Git hooks
+#       permissions:
+#         contents: read
+#       uses: Rakiura-Inc/.github/.github/workflows/git-hooks.yml@<sha>  # vX.Y.Z
+
+name: "Git hooks"
+
+on:
+  workflow_call:
+    inputs:
+      prek-version:
+        description: "The prek version to install."
+        type: string
+        # renovate: datasource=pypi depName=prek
+        default: "0.5.9"
+      working-directory:
+        description: "The folder that holds .pre-commit-config.yaml, relative to the repository root."
+        type: string
+        default: "."
+      timeout-minutes:
+        description: "Timeout for the job."
+        type: number
+        default: 10
+
+permissions: {}
+
+jobs:
+  prek:
+    name: prek run --all-files
+    runs-on: ubuntu-26.04
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read  # check out the repository
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run prek
+        uses: j178/prek-action@44924fe9ef4a6f88253c4b6b1bf11c689d3ce53d  # v3.1.0
+        with:
+          prek-version: ${{ inputs.prek-version }}
+          working-directory: ${{ inputs.working-directory }}
