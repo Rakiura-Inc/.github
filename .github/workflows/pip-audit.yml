@@ -1,0 +1,93 @@
+# Reusable: check every locked dependency against the known-vulnerability databases with
+# pip-audit. A library without a committed uv.lock is resolved fresh, which is what a new install
+# gets. Dependencies installed from a git URL are listed and skipped: pip-audit cannot look them up.
+#
+#   jobs:
+#     pip-audit:
+#       name: pip-audit
+#       permissions:
+#         contents: read
+#       uses: Rakiura-Inc/.github/.github/workflows/pip-audit.yml@<sha>  # vX.Y.Z
+
+name: "pip-audit"
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        description: "The Python to resolve for."
+        type: string
+        default: "3.13"
+      uv-version:
+        description: "The uv version to install."
+        type: string
+        # renovate: datasource=pypi depName=uv
+        default: "0.13.7"
+      pip-audit-version:
+        description: "The pip-audit version to run."
+        type: string
+        # renovate: datasource=pypi depName=pip-audit
+        default: "2.10.1"
+      working-directory:
+        description: "The project folder, relative to the repository root."
+        type: string
+        default: "."
+      export-args:
+        description: "Arguments for `uv export`: which extras and groups to audit."
+        type: string
+        default: "--all-extras --all-groups"
+      ignore-vulns:
+        description: "Space-separated vulnerability IDs to ignore (say why in the calling workflow)."
+        type: string
+        default: ""
+
+permissions: {}
+
+jobs:
+  audit:
+    name: pip-audit
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read  # check out the repository
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv ${{ inputs.uv-version }} & Python ${{ inputs.python-version }}
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          enable-cache: false
+          python-version: ${{ inputs.python-version }}
+          version: ${{ inputs.uv-version }}
+          working-directory: ${{ inputs.working-directory }}
+
+      - name: Export the locked requirements with their hashes
+        env:
+          EXPORT_ARGS: ${{ inputs.export-args }}
+        run: |
+          # shellcheck disable=SC2086  # EXPORT_ARGS is a list of arguments
+          uv export --quiet --format requirements.txt --no-emit-project $EXPORT_ARGS -o "$RUNNER_TEMP/all.txt"
+          # A `name @ git+https://...` line has no hash and is not on PyPI, so it cannot be audited.
+          grep -E '^[A-Za-z0-9._-]+ @ ' "$RUNNER_TEMP/all.txt" > "$RUNNER_TEMP/skipped.txt" || true
+          grep -v -E '^[A-Za-z0-9._-]+ @ ' "$RUNNER_TEMP/all.txt" > "$RUNNER_TEMP/requirements.txt"
+          if [ -s "$RUNNER_TEMP/skipped.txt" ]; then
+            echo "Not audited (installed from a URL, not from PyPI):"
+            cat "$RUNNER_TEMP/skipped.txt"
+          fi
+
+      - name: Run pip-audit
+        env:
+          PIP_AUDIT_VERSION: ${{ inputs.pip-audit-version }}
+          IGNORE_VULNS: ${{ inputs.ignore-vulns }}
+        run: |
+          ignore=()
+          for id in $IGNORE_VULNS; do ignore+=(--ignore-vuln "$id"); done
+          uvx "pip-audit==$PIP_AUDIT_VERSION" --requirement "$RUNNER_TEMP/requirements.txt" \
+            --disable-pip --require-hashes --progress-spinner off "${ignore[@]}"

@@ -1,0 +1,115 @@
+# Reusable: execute every teaching notebook headless, so a change that breaks a notebook fails CI.
+# The executed copies are uploaded as a workflow artifact for review.
+#
+#   jobs:
+#     notebooks:
+#       name: Notebooks
+#       permissions:
+#         contents: read
+#       uses: Rakiura-Inc/.github/.github/workflows/notebooks-execute.yml@<sha>  # vX.Y.Z
+#       with:
+#         cache-path: notebooks/data
+#         cache-key-files: mypackage/manifests/*.json
+#         use-cache: ${{ github.event_name != 'schedule' }}
+
+name: "Execute notebooks"
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        description: "The Python to run the notebooks on: the one Google Colab's current runtime ships."
+        type: string
+        default: "3.13"
+      uv-version:
+        description: "The uv version to install."
+        type: string
+        # renovate: datasource=pypi depName=uv
+        default: "0.13.7"
+      working-directory:
+        description: "The project folder, relative to the repository root."
+        type: string
+        default: "."
+      sync-args:
+        description: "Arguments for `uv sync`."
+        type: string
+        default: "--locked"
+      run-command:
+        description: "The command that executes the notebooks; it must exit non-zero when a cell fails."
+        type: string
+        default: "uv run scripts/run_notebooks.py"
+      executed-path:
+        description: "Where the command writes the executed copies (uploaded as an artifact). Empty to skip."
+        type: string
+        default: "notebooks/executed"
+      cache-path:
+        description: "A data folder to cache between runs, for example downloaded datasets. Empty for no cache."
+        type: string
+        default: ""
+      cache-key-files:
+        description: "Glob (relative to the repository root) of the files whose contents decide when the cached data is stale."
+        type: string
+        default: ""
+      use-cache:
+        description: "Set false to skip the cache, for example on a scheduled run that checks the live sources."
+        type: boolean
+        default: true
+      timeout-minutes:
+        description: "Timeout for the job."
+        type: number
+        default: 30
+
+permissions: {}
+
+jobs:
+  execute:
+    name: execute the notebooks (Python ${{ inputs.python-version }})
+    runs-on: ubuntu-26.04
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read  # check out the repository
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv ${{ inputs.uv-version }} & Python ${{ inputs.python-version }}
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          enable-cache: true
+          python-version: ${{ inputs.python-version }}
+          version: ${{ inputs.uv-version }}
+          working-directory: ${{ inputs.working-directory }}
+
+      - name: Restore the data cache
+        if: inputs.cache-path != '' && inputs.use-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ${{ inputs.working-directory }}/${{ inputs.cache-path }}
+          key: notebook-data-${{ hashFiles(inputs.cache-key-files) }}
+
+      - name: Install Python dependencies
+        env:
+          SYNC_ARGS: ${{ inputs.sync-args }}
+        run: |
+          # shellcheck disable=SC2086  # SYNC_ARGS is a list of arguments
+          uv sync $SYNC_ARGS
+
+      - name: Execute every notebook headless
+        env:
+          RUN_COMMAND: ${{ inputs.run-command }}
+        run: bash -c "$RUN_COMMAND"
+
+      - name: Upload the executed notebooks
+        if: always() && inputs.executed-path != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: executed-notebooks
+          path: ${{ inputs.working-directory }}/${{ inputs.executed-path }}
+          if-no-files-found: warn
+          retention-days: 7

@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+.venv/
+dist/
+.pytest_cache/
+.ruff_cache/
+# The self test's executed notebooks are uploaded as an artifact, not committed.
+tests/fixture/notebooks/executed/*.executed.ipynb

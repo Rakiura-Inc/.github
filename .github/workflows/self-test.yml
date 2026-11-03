@@ -1,0 +1,52 @@
+# Runs the shared workflows of this repository, from this commit, against tests/fixture, so a change
+# to one of them is tested before any repository picks it up.
+
+name: "Self test"
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request: ~
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  git-hooks:
+    name: Git hooks
+    permissions:
+      contents: read  # check out the repository
+    uses: $/.github/workflows/git-hooks.yml
+
+  python-tests:
+    name: Tests
+    permissions:
+      contents: read  # check out the repository
+    uses: $/.github/workflows/python-tests.yml
+    with:
+      python-versions: "[\"3.11\", \"3.15\"]"
+      working-directory: tests/fixture
+      sync-args: --locked
+      import-check: "import fixture_pkg; print(fixture_pkg.__version__, fixture_pkg.__file__)"
+      wheel-tests: tests
+
+  notebooks:
+    name: Notebooks
+    permissions:
+      contents: read  # check out the repository
+    uses: $/.github/workflows/notebooks-execute.yml
+    with:
+      working-directory: tests/fixture
+
+  pip-audit:
+    name: pip-audit
+    permissions:
+      contents: read  # check out the repository
+    uses: $/.github/workflows/pip-audit.yml
+    with:
+      working-directory: tests/fixture

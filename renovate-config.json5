@@ -1,0 +1,40 @@
+// The Rakiura-Inc Renovate preset. A repository uses it with
+//   "extends": ["github>Rakiura-Inc/.github:renovate-config.json5"]
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Rakiura-Inc defaults: pinned actions and dev tools, pre-commit hooks, a weekly lock refresh.",
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests",
+    ":pinDevDependencies",
+  ],
+  "pre-commit": {
+    "enabled": true,
+  },
+  // Refresh every locked version once a week (only where uv.lock is committed).
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on monday"],
+  },
+  // Wait three days before proposing a new third-party release, so a compromised or broken
+  // release is usually caught and pulled before it reaches us.
+  "minimumReleaseAge": "3 days",
+  "packageRules": [
+    {
+      // Our own shared workflows and template: take each release right away, in one pull request.
+      "matchPackageNames": ["Rakiura-Inc/**"],
+      "minimumReleaseAge": "0 days",
+      "groupName": "Rakiura shared workflows",
+    },
+  ],
+  "customManagers": [
+    {
+      // Versions in workflows marked with a "# renovate: datasource=... depName=..." comment.
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.github/workflows/.+\\.ya?ml$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+\\w+: \"?(?<currentValue>[^\\s\"]+)\"?",
+      ],
+    },
+  ],
+}

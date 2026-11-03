@@ -1,0 +1,142 @@
+# Reusable: run a project's tests with uv on several Python versions, and optionally build the
+# wheel and check it installs and imports on its own.
+#
+#   jobs:
+#     tests:
+#       name: Tests
+#       permissions:
+#         contents: read
+#       uses: Rakiura-Inc/.github/.github/workflows/python-tests.yml@<sha>  # vX.Y.Z
+#       with:
+#         import-check: "import mypackage; print(mypackage.__version__)"
+
+name: "Python tests"
+
+on:
+  workflow_call:
+    inputs:
+      python-versions:
+        description: "JSON list of the Python versions to test on."
+        type: string
+        default: "[\"3.11\", \"3.12\", \"3.13\", \"3.14\", \"3.15\"]"
+      uv-version:
+        description: "The uv version to install."
+        type: string
+        # renovate: datasource=pypi depName=uv
+        default: "0.13.7"
+      working-directory:
+        description: "The project folder, relative to the repository root."
+        type: string
+        default: "."
+      sync-args:
+        description: "Extra arguments for `uv sync`, for example `--locked` when uv.lock is committed."
+        type: string
+        default: ""
+      type-check:
+        description: "Run `uv run ty check` before the tests."
+        type: boolean
+        default: false
+      pytest-args:
+        description: "Extra arguments for `uv run pytest`."
+        type: string
+        default: ""
+      build:
+        description: "Build the sdist and wheel with `uv build` after the tests."
+        type: boolean
+        default: false
+      import-check:
+        description: >-
+          Python code run against the built wheel alone, in an isolated environment away from the checkout (implies build).
+          Empty to skip.
+        type: string
+        default: ""
+      wheel-tests:
+        description: >-
+          Tests folder (relative to the project) to run again against the built wheel in a clean venv, with the project's
+          `pytest` dependency group (implies build). Empty to skip.
+        type: string
+        default: ""
+      timeout-minutes:
+        description: "Timeout for each Python version's job."
+        type: number
+        default: 10
+
+permissions: {}
+
+jobs:
+  pytest:
+    name: pytest (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-26.04
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read  # check out the repository
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ${{ fromJSON(inputs.python-versions) }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv ${{ inputs.uv-version }} & Python ${{ matrix.python-version }}
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+          version: ${{ inputs.uv-version }}
+          working-directory: ${{ inputs.working-directory }}
+
+      - name: Install Python dependencies
+        env:
+          SYNC_ARGS: ${{ inputs.sync-args }}
+        run: |
+          # shellcheck disable=SC2086  # SYNC_ARGS is a list of arguments
+          uv sync $SYNC_ARGS
+
+      - name: Type check
+        if: inputs.type-check
+        run: uv run ty check
+
+      - name: Run tests
+        env:
+          PYTEST_ARGS: ${{ inputs.pytest-args }}
+        run: |
+          # shellcheck disable=SC2086  # PYTEST_ARGS is a list of arguments
+          uv run pytest $PYTEST_ARGS
+
+      - name: Build package
+        if: inputs.build || inputs.import-check != '' || inputs.wheel-tests != ''
+        run: uv build
+
+      # What `pip install git+https://...` gets: the wheel alone, imported from outside the checkout.
+      - name: Import the built wheel on its own
+        if: inputs.import-check != ''
+        env:
+          IMPORT_CHECK: ${{ inputs.import-check }}
+          PYTHON_VERSION: ${{ matrix.python-version }}
+        run: |
+          wheel="$(realpath dist/*.whl)"
+          cd "$RUNNER_TEMP"
+          uv run --isolated --no-project --python "$PYTHON_VERSION" --with "$wheel" python -c "$IMPORT_CHECK"
+
+      - name: Run the tests again against the built wheel
+        if: inputs.wheel-tests != ''
+        env:
+          WHEEL_TESTS: ${{ inputs.wheel-tests }}
+          PYTHON_VERSION: ${{ matrix.python-version }}
+        run: |
+          venv="$RUNNER_TEMP/wheel-venv"
+          uv venv --python "$PYTHON_VERSION" "$venv"
+          VIRTUAL_ENV="$venv" uv pip install dist/*.whl --group pytest
+          mkdir "$RUNNER_TEMP/wheel-tests"
+          cp -r "$WHEEL_TESTS" "$RUNNER_TEMP/wheel-tests/tests"
+          if [ -f pytest.toml ]; then cp pytest.toml "$RUNNER_TEMP/wheel-tests/"; fi
+          cd "$RUNNER_TEMP/wheel-tests"
+          "$venv/bin/python" -c "import sys; print(sys.version)"
+          "$venv/bin/python" -m pytest tests
