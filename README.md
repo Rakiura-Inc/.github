@@ -32,6 +32,14 @@ repositories can only call workflows from public repositories.
 | `release.yml` | on a `v*` tag: builds the sdist and wheel (read-only job), then records build provenance and attaches them to a GitHub Release | `contents: write`, `id-token: write`, `attestations: write` |
 | `scorecard.yml` | OpenSSF Scorecard on the default branch, uploaded as SARIF to the Security tab | `contents: read`, `security-events: write` |
 
+A release made by `release.yml` is signed by this repository's workflow, not by the calling
+repository's, so check a downloaded file with both:
+
+```sh
+gh attestation verify <file> --repo Rakiura-Inc/<repository> \
+  --signer-workflow Rakiura-Inc/.github/.github/workflows/release.yml
+```
+
 Each file starts with a short calling example, and every input has a description and a default.
 All of them run on `ubuntu-26.04` with a timeout, check out with `persist-credentials: false`,
 start from `permissions: {}` and pin every action to a full commit SHA.
