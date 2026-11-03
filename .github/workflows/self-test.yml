@@ -50,3 +50,12 @@ jobs:
     uses: $/.github/workflows/pip-audit.yml
     with:
       working-directory: tests/fixture
+
+  release:
+    name: Release (dry run)
+    permissions:
+      contents: read  # check out the repository; a dry run never attests or releases
+    uses: $/.github/workflows/release.yml
+    with:
+      working-directory: tests/fixture
+      dry-run: true
